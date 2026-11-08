@@ -1,10 +1,11 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import KnowledgePanel from './components/KnowledgePanel'
 import RoninChat from './components/RoninChat'
 import Header from './components/Header'
 import EscritorioPixel from './pixel/EscritorioPixel'
 import MundoVoxel from './mundo/MundoVoxel'
 import { avisarRonin } from './pixel/roninEventos'
+import './ui/tema.css'
 
 // SELEBLO OS: ilha de blocos (16 terrenos = 16 pastas do cofre) com o robô RONIN.
 // A cena 3D antiga (src/scene/OfficeScene.js) ficou no repositório, mas não é mais usada.
@@ -14,7 +15,18 @@ const VISUAL = new URLSearchParams(window.location.search).get('visual') === 'pi
 export default function App() {
   const [showRoninChat, setShowRoninChat] = useState(false)
   const [zoneCommand, setZoneCommand] = useState(null)
+  const [pergunta, setPergunta] = useState(null)
   const abrirPasta = useCallback((folder) => setZoneCommand({ folder, seq: Date.now() }), [])
+
+  // "Perguntar ao RONIN" a partir de uma nota do Cofre
+  useEffect(() => {
+    const ouvir = (event) => {
+      setPergunta({ texto: event.detail?.texto || '', nota: event.detail?.nota || null, seq: Date.now() })
+      setShowRoninChat(true)
+    }
+    window.addEventListener('seleblo:perguntar', ouvir)
+    return () => window.removeEventListener('seleblo:perguntar', ouvir)
+  }, [])
 
   return (
     <>
@@ -30,24 +42,19 @@ export default function App() {
       />
       <button
         type="button"
-        onClick={() => setShowRoninChat(true)}
-        aria-label="Abrir chat com RONIN, agente de IA local"
-        style={{
-          position: 'fixed', top: 77, right: 20, zIndex: 55,
-          padding: '9px 14px', borderRadius: 9, cursor: 'pointer',
-          border: '1px solid rgba(13,238,243,.45)', color: '#0DEEF3',
-          background: 'rgba(3,25,45,.9)', backdropFilter: 'blur(12px)',
-          fontFamily: "'DM Mono',monospace", fontSize: 11, letterSpacing: '.05em',
-        }}
-      >◉ FALAR COM RONIN · IA LOCAL</button>
-      <RoninChat open={showRoninChat} onClose={() => setShowRoninChat(false)} />
+        className="so-placa"
+        style={{ right: 16 }}
+        aria-pressed={showRoninChat}
+        onClick={() => setShowRoninChat((v) => !v)}
+      >🤖 Falar com o RONIN</button>
+      <RoninChat open={showRoninChat} onClose={() => setShowRoninChat(false)} pergunta={pergunta} />
 
       <div style={{
         position: 'fixed', bottom: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 20,
-        fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: '.12em',
-        color: 'rgba(234,246,255,.9)', pointerEvents: 'none', textAlign: 'center', textShadow: '0 1px 6px rgba(0,20,40,.8)',
+        font: "700 13px 'Nunito', sans-serif", color: '#fbf4df', pointerEvents: 'none', textAlign: 'center',
+        textShadow: '0 1px 0 #3a2716, 0 2px 8px rgba(30,20,10,.7)', maxWidth: 'calc(100vw - 32px)',
       }}>
-        clique numa placa para abrir a pasta · arraste para girar a ilha · fale com o RONIN e veja ele consultar o cofre
+        Clique numa placa para abrir a pasta · arraste para girar a ilha · role para aproximar
       </div>
     </>
   )

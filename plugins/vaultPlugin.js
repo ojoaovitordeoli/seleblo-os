@@ -429,6 +429,24 @@ async function handleChat(req, res, send, knowledgeIndex) {
         knowledgeIndex,
       )
     }
+    // "Perguntar ao RONIN" a partir de uma nota: essa nota entra primeiro no contexto,
+    // lida direto do cofre (o índice pode estar atrasado se a nota acabou de mudar).
+    const focusPath = useKnowledge && typeof body.focusPath === 'string' ? body.focusPath : ''
+    if (focusPath) {
+      let focusText = ''
+      try { focusText = searchableNoteText(readNoteContent({ path: focusPath })) } catch { focusText = '' }
+      if (focusText.trim()) {
+        const content = focusText.slice(0, 3500)
+        retrieval = {
+          ...retrieval,
+          sufficient: true,
+          documents: [
+            { name: focusPath.split('/').pop(), path: focusPath, excerpt: content.slice(0, 240), content, metadata: 'Nota escolhida pelo usuário.', matchedTerms: [] },
+            ...retrieval.documents.filter(document => document.path !== focusPath),
+          ].slice(0, MAX_CONTEXT_DOCUMENTS),
+        }
+      }
+    }
     retrievalMs = performance.now() - retrievalStarted
     const retrievedPaths = new Set(retrieval.documents.map(document => document.path))
     const promptHistory = useKnowledge

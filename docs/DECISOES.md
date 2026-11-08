@@ -22,3 +22,14 @@ Formato: data · decisão · motivo · status.
 - `src/mundo/MundoVoxel.jsx`: ilha flutuante estilo voxel, 16 terrenos = 16 pastas, farol na praça,
   robô RobotExpressive (CC0) que anda, acena, faz joinha e dança conforme o chat do RONIN.
 - O pixel-art continua disponível em `?visual=pixel`. Créditos em `public/mundo/CREDITOS.md`.
+
+## 2026-11-08 — Tema "Ilha" para o Cofre e o chat do RONIN (Design Squad)
+- Auditoria: painel escuro/neon destoava da ilha, grade de 16 cartões repetia a ilha, textos técnicos
+  ("Universo V4", "Índice/Analisados/Pendentes"), fontes do chat não clicáveis, sem retorno durante a espera.
+- `src/ui/tema.css` (tokens madeira/pergaminho/grama) e `src/ui/Markdown.jsx` (leitura segura de notas).
+- Cofre: abas Pastas / Recentes / Guardar, lista de pastas com contagem, filtros só dos tipos existentes,
+  leitor com "Abrir no Obsidian", "Ver fonte" e "Perguntar ao RONIN"; opções avançadas recolhidas.
+- Chat: status em português, sugestões, cronômetro "Pensando… Ns", cancelar, copiar, fontes clicáveis,
+  "Procurar em" com opção sem cofre. Pergunta feita a partir de uma nota envia `focusPath` e a nota entra
+  primeiro no contexto (lida direto do cofre).
+- Corrigido `scripts/start-seleblo-preview.ps1` (tabulação acidental no caminho do arquivo Tailscale).

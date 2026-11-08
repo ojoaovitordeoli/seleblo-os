@@ -1,0 +1,163 @@
+/*
+ * Tema "Ilha" do SELEBLO OS — madeira, pergaminho e grama, combinando com o mundo de blocos.
+ * Tokens primeiro; componentes usam só tokens (sem cor solta no JSX).
+ */
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap');
+
+:root {
+  --madeira-escura: #3a2716;
+  --madeira: #6b4a2b;
+  --madeira-clara: #8f6a42;
+  --pergaminho: #fbf4df;
+  --pergaminho-2: #f2e5c2;
+  --pergaminho-3: #e6d29f;
+  --linha: #d8c38f;
+  --tinta: #2a2016;
+  --tinta-2: #66543d;
+  --tinta-3: #8b7759;
+  --grama: #4f9e44;
+  --grama-escura: #2f6b2b;
+  --grama-clara: #e2f2d6;
+  --agua: #2f7fb5;
+  --alerta: #b4432c;
+  --alerta-claro: #fbe3dc;
+  --aviso: #a86f0e;
+  --aviso-claro: #fdf0cf;
+  --foco: #ffb52e;
+  --sombra-bloco: 0 4px 0 var(--madeira-escura);
+  --sombra-painel: 0 6px 0 var(--madeira-escura), 0 18px 40px rgba(25, 18, 8, .35);
+  --raio: 6px;
+  --fonte-titulo: 'Pixelify Sans', 'Nunito', system-ui, sans-serif;
+  --fonte-texto: 'Nunito', system-ui, sans-serif;
+  --e1: 4px; --e2: 8px; --e3: 12px; --e4: 16px; --e5: 24px;
+}
+
+/* ------------------------------------------------------------- base */
+.so-painel {
+  position: fixed; z-index: 60; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--pergaminho); color: var(--tinta);
+  border: 4px solid var(--madeira-escura); border-radius: var(--raio);
+  box-shadow: var(--sombra-painel); font-family: var(--fonte-texto); font-size: 14px;
+}
+.so-painel *:focus-visible { outline: 3px solid var(--foco); outline-offset: 2px; }
+.so-topo {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--e2);
+  padding: var(--e3) var(--e4); background: var(--madeira); color: var(--pergaminho);
+  border-bottom: 4px solid var(--madeira-escura);
+}
+.so-topo h2 { margin: 0; font: 600 20px/1.1 var(--fonte-titulo); letter-spacing: .02em; }
+.so-topo .so-sub { font-size: 12px; color: #f0dfb7; margin-top: 2px }
+.so-corpo { flex: 1; min-height: 0; overflow-y: auto; padding: var(--e4); }
+.so-corpo::-webkit-scrollbar { width: 10px } .so-corpo::-webkit-scrollbar-thumb { background: var(--pergaminho-3); border: 2px solid var(--pergaminho); border-radius: 6px }
+.so-rodape { padding: var(--e3) var(--e4); border-top: 3px solid var(--linha); background: var(--pergaminho-2); }
+
+/* ------------------------------------------------------------- botões */
+.so-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px;
+  padding: 6px 12px; cursor: pointer; text-decoration: none; white-space: nowrap;
+  font: 600 14px var(--fonte-titulo); letter-spacing: .02em;
+  color: var(--tinta); background: var(--pergaminho-2);
+  border: 3px solid var(--madeira-escura); border-radius: var(--raio); box-shadow: 0 3px 0 var(--madeira-escura);
+  transition: transform .06s, box-shadow .06s, background .12s;
+}
+.so-btn:hover { background: var(--pergaminho-3) }
+.so-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--madeira-escura) }
+.so-btn:disabled { opacity: .5; cursor: not-allowed; transform: none }
+.so-btn--principal { background: var(--grama); color: #fff; }
+.so-btn--principal:hover { background: var(--grama-escura) }
+.so-btn--perigo { background: var(--alerta-claro); color: var(--alerta) }
+.so-btn--leve { background: transparent; box-shadow: none; border-color: var(--linha); font-family: var(--fonte-texto); font-weight: 700; font-size: 13px }
+.so-btn--leve:hover { background: var(--pergaminho-2) }
+.so-btn--icone { min-width: 38px; padding: 6px; }
+.so-topo .so-btn--icone { background: var(--madeira-clara); color: var(--pergaminho); border-color: var(--madeira-escura) }
+
+/* placas fixas no topo da tela (Cofre / RONIN) */
+.so-placa {
+  position: fixed; top: 76px; z-index: 55; min-height: 44px; padding: 8px 16px;
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  font: 600 16px var(--fonte-titulo); color: var(--pergaminho);
+  background: var(--madeira); border: 4px solid var(--madeira-escura); border-radius: var(--raio);
+  box-shadow: var(--sombra-bloco);
+}
+.so-placa:hover { background: var(--madeira-clara) }
+.so-placa[aria-pressed="true"] { background: var(--grama); }
+.so-placa:focus-visible { outline: 3px solid var(--foco); outline-offset: 2px }
+
+/* ------------------------------------------------------------- abas, campos, chips */
+.so-abas { display: flex; gap: 6px; padding: var(--e3) var(--e4) 0; background: var(--pergaminho-2); border-bottom: 3px solid var(--linha); }
+.so-aba {
+  flex: 1; min-height: 40px; cursor: pointer; font: 600 15px var(--fonte-titulo); color: var(--tinta-2);
+  background: var(--pergaminho-3); border: 3px solid var(--linha); border-bottom: none; border-radius: var(--raio) var(--raio) 0 0;
+  margin-bottom: -3px;
+}
+.so-aba[aria-selected="true"] { background: var(--pergaminho); color: var(--tinta); border-color: var(--linha); border-bottom: 3px solid var(--pergaminho) }
+.so-campo {
+  width: 100%; min-height: 40px; padding: 8px 12px; font: 400 14px var(--fonte-texto); color: var(--tinta);
+  background: #fffaf0; border: 2px solid var(--madeira-clara); border-radius: var(--raio); outline: none;
+}
+.so-campo::placeholder { color: var(--tinta-3) }
+.so-campo:focus { border-color: var(--madeira-escura); box-shadow: 0 0 0 3px #ffb52e66 }
+textarea.so-campo { resize: vertical; line-height: 1.5 }
+.so-rotulo { display: block; font: 700 12px var(--fonte-texto); color: var(--tinta-2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em }
+.so-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+  font: 700 12px var(--fonte-texto); color: var(--tinta-2); background: var(--pergaminho-2); border: 1px solid var(--linha);
+}
+.so-chip i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; background: var(--cor, var(--madeira)) }
+button.so-chip { cursor: pointer } button.so-chip:hover { background: var(--pergaminho-3) }
+button.so-chip[aria-pressed="true"] { background: var(--madeira); color: var(--pergaminho); border-color: var(--madeira-escura) }
+
+/* ------------------------------------------------------------- listas */
+.so-lista { display: flex; flex-direction: column; gap: 6px; }
+.so-item {
+  display: flex; align-items: center; gap: var(--e3); width: 100%; min-height: 52px; padding: 8px 10px; text-align: left; cursor: pointer;
+  background: #fffaf0; color: var(--tinta); border: 2px solid var(--linha); border-radius: var(--raio); font-family: var(--fonte-texto);
+}
+.so-item:hover { border-color: var(--madeira-clara); background: #fff }
+.so-item--vazio { opacity: .62 }
+.so-bloco-cor {
+  flex-shrink: 0; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 4px; font-size: 17px; color: #fff;
+  background: var(--cor); box-shadow: inset 0 -4px 0 rgba(0,0,0,.22), inset 0 3px 0 rgba(255,255,255,.25);
+}
+.so-item .so-titulo { font-weight: 800; font-size: 14px; line-height: 1.3; overflow-wrap: anywhere }
+.so-item .so-desc { font-size: 12px; color: var(--tinta-2); margin-top: 2px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
+.so-contador { margin-left: auto; flex-shrink: 0; min-width: 30px; text-align: center; font: 600 14px var(--fonte-titulo); color: var(--madeira); }
+.so-seta { flex-shrink: 0; color: var(--tinta-3); font-size: 18px }
+
+/* ------------------------------------------------------------- avisos */
+.so-aviso { padding: 10px 12px; border-radius: var(--raio); font-size: 13px; line-height: 1.45; border: 2px solid; }
+.so-aviso--erro { background: var(--alerta-claro); color: var(--alerta); border-color: #e7a796 }
+.so-aviso--atencao { background: var(--aviso-claro); color: var(--aviso); border-color: #ecc979 }
+.so-aviso--ok { background: var(--grama-clara); color: var(--grama-escura); border-color: #a9d59a }
+.so-vazio { text-align: center; padding: 28px 12px; color: var(--tinta-2); font-size: 14px; line-height: 1.6 }
+.so-vazio .so-icone-grande { font-size: 34px; display: block; margin-bottom: 6px }
+.so-secao { margin-bottom: var(--e5) }
+.so-secao h3 { margin: 0 0 var(--e2); font: 600 16px var(--fonte-titulo); color: var(--madeira) }
+.so-detalhes summary { cursor: pointer; font: 600 15px var(--fonte-titulo); color: var(--madeira); padding: 6px 0 }
+
+/* ------------------------------------------------------------- leitura de nota (markdown) */
+.so-md { font-size: 14px; line-height: 1.65; color: var(--tinta); overflow-wrap: anywhere; user-select: text }
+.so-md h1, .so-md h2, .so-md h3 { font-family: var(--fonte-titulo); color: var(--madeira); margin: 18px 0 6px; line-height: 1.2 }
+.so-md h1 { font-size: 22px } .so-md h2 { font-size: 18px } .so-md h3 { font-size: 16px }
+.so-md p { margin: 0 0 10px } .so-md ul, .so-md ol { margin: 0 0 10px 20px; padding: 0 } .so-md li { margin-bottom: 3px }
+.so-md a { color: var(--agua); font-weight: 700 }
+.so-md code { background: var(--pergaminho-2); padding: 1px 5px; border-radius: 4px; font-size: 13px }
+.so-md pre { background: var(--madeira-escura); color: #f6ead0; padding: 12px; border-radius: var(--raio); overflow-x: auto; font-size: 12px; line-height: 1.5; margin: 0 0 12px; white-space: pre-wrap }
+.so-md blockquote { margin: 0 0 10px; padding: 6px 12px; border-left: 4px solid var(--linha); color: var(--tinta-2); background: var(--pergaminho-2) }
+
+/* ------------------------------------------------------------- chat */
+.so-msg { max-width: 92%; margin-bottom: var(--e3); padding: 10px 12px; border-radius: 10px; font-size: 14px; line-height: 1.55; border: 2px solid var(--linha) }
+.so-msg--voce { margin-left: auto; background: var(--grama); color: #fff; border-color: var(--grama-escura); white-space: pre-wrap; overflow-wrap: anywhere }
+.so-msg--ronin { background: #fffaf0 }
+.so-msg-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--tinta-3) }
+.so-pensando { display: inline-flex; gap: 4px; margin-right: 6px; vertical-align: middle }
+.so-pensando i { width: 7px; height: 7px; background: var(--madeira); border-radius: 1px; animation: so-pula 1s infinite }
+.so-pensando i:nth-child(2) { animation-delay: .15s } .so-pensando i:nth-child(3) { animation-delay: .3s }
+@keyframes so-pula { 0%, 100% { transform: translateY(0) } 40% { transform: translateY(-5px) } }
+.so-status { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; font: 700 12px var(--fonte-texto); background: rgba(0,0,0,.18) }
+.so-status i { width: 8px; height: 8px; border-radius: 50%; background: var(--cor) }
+
+@media (prefers-reduced-motion: reduce) { .so-pensando i { animation: none } .so-btn { transition: none } }
+@media (max-width: 640px) {
+  .so-placa { top: 64px; font-size: 14px; padding: 6px 10px }
+}

@@ -4,9 +4,9 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $viteCli = Join-Path $projectRoot 'node_modules\vite\bin\vite.js'
 $node = Join-Path $env:ProgramFiles 'nodejs\node.exe'
 # Endereço Tailscale deste PC: fica fora do repositório (variável SELEBLO_TAILSCALE_HOST
-# ou o arquivo %LOCALAPPDATA%\SELEBLO-OS	ailscale-host.txt).
+# ou o arquivo %LOCALAPPDATA%\SELEBLO-OS\tailscale-host.txt).
 $hostname = $env:SELEBLO_TAILSCALE_HOST
-$hostFile = Join-Path $env:LOCALAPPDATA 'SELEBLO-OS	ailscale-host.txt'
+$hostFile = Join-Path $env:LOCALAPPDATA 'SELEBLO-OS\tailscale-host.txt'
 if (-not $hostname -and (Test-Path -LiteralPath $hostFile)) { $hostname = (Get-Content -LiteralPath $hostFile -Raw).Trim() }
 $port = 4173
 $dataDirectory = Join-Path $env:LOCALAPPDATA 'SELEBLO-OS'

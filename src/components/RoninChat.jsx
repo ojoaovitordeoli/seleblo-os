@@ -1,108 +1,103 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { avisarRonin } from '../pixel/roninEventos'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { abrirNota, avisarRonin } from '../pixel/roninEventos'
 import { KNOWLEDGE_CATEGORIES } from '../knowledgeCategories'
+import Markdown from '../ui/Markdown'
+import '../ui/tema.css'
 
-const MONO = "'DM Mono',monospace"
-const panelStyle = {
-  position: 'fixed',
-  top: 122,
-  right: 18,
-  bottom: 18,
-  width: 'min(430px, calc(100vw - 36px))',
-  zIndex: 60,
-  display: 'flex',
-  flexDirection: 'column',
-  overflow: 'hidden',
-  color: '#ecf7ff',
-  background: 'rgba(2,13,29,.96)',
-  border: '1px solid rgba(13,238,243,.28)',
-  borderRadius: 16,
-  boxShadow: '0 20px 70px rgba(0,0,0,.55)',
-  backdropFilter: 'blur(22px)',
-  fontFamily: "'DM Sans',sans-serif",
+// Chat com o RONIN (IA local via Ollama), no tema "Ilha".
+const SUGESTOES = [
+  'O que eu salvei recentemente?',
+  'Resuma o que tenho sobre Projetos',
+  'Tem alguma copy guardada que eu possa reaproveitar?',
+  'Quais ideias de conteúdo tenho no cofre?',
+]
+const STATUS = {
+  checking: ['Verificando…', '#d9c27a'],
+  ready: ['Pronto', '#7cc35a'],
+  thinking: ['Pensando…', '#ffb52e'],
+  'model-missing': ['Modelo local não instalado', '#e0735b'],
+  offline: ['Desligado', '#e0735b'],
 }
-const buttonStyle = {
-  border: '1px solid rgba(13,238,243,.35)',
-  borderRadius: 8,
-  background: 'rgba(13,238,243,.09)',
-  color: '#0DEEF3',
-  padding: '8px 11px',
-  cursor: 'pointer',
-  fontFamily: MONO,
-  fontSize: 10,
-}
+const nomeDaNota = (path = '') => path.split('/').pop().replace(/\.md$/i, '')
 
-export default function RoninChat({ open, onClose }) {
+export default function RoninChat({ open, onClose, pergunta }) {
   const [messages, setMessages] = useState([])
   const [draft, setDraft] = useState('')
   const [category, setCategory] = useState('')
-  const [useKnowledge, setUseKnowledge] = useState(true)
   const [status, setStatus] = useState('checking')
-  const [model, setModel] = useState('qwen3:4b')
-  const [fallbackUsed, setFallbackUsed] = useState(false)
-  const [thinkingEnabled, setThinkingEnabled] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [segundos, setSegundos] = useState(0)
+  const [copiado, setCopiado] = useState(null)
+  const [foco, setFoco] = useState(null) // nota escolhida no Cofre
   const conversationRef = useRef(null)
   const requestRef = useRef(null)
+  const campoRef = useRef(null)
+
+  const verificar = useCallback((signal) => {
+    setStatus('checking')
+    return fetch('/api/seleblo/status', { signal, cache: 'no-store' })
+      .then(async (response) => {
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.error || 'erro')
+        setStatus(data.available ? 'ready' : data.reason === 'model_not_installed' ? 'model-missing' : 'offline')
+      })
+      .catch((fetchError) => { if (fetchError.name !== 'AbortError') setStatus('offline') })
+  }, [])
 
   useEffect(() => {
     if (!open) return undefined
     const controller = new AbortController()
-    setStatus('checking')
-    fetch('/api/seleblo/status', { signal: controller.signal, cache: 'no-store' })
-      .then(async response => {
-        const data = await response.json()
-        if (!response.ok) throw new Error(data.error || 'Não foi possível verificar o modelo local.')
-        setStatus(data.available ? 'ready' : data.reason === 'model_not_installed' ? 'model-missing' : 'offline')
-        setModel(data.model || 'qwen3:4b')
-        setFallbackUsed(Boolean(data.fallbackUsed))
-        setThinkingEnabled(typeof data.thinkingEnabled === 'boolean' ? data.thinkingEnabled : null)
-      })
-      .catch(fetchError => {
-        if (fetchError.name !== 'AbortError') setStatus('offline')
-      })
+    verificar(controller.signal)
+    setTimeout(() => campoRef.current?.focus(), 50)
     return () => controller.abort()
-  }, [open])
+  }, [open, verificar])
+
+  // Pergunta vinda do Cofre ("Perguntar ao RONIN")
+  useEffect(() => {
+    if (!pergunta?.texto) return
+    setDraft(pergunta.texto)
+    setFoco(pergunta.nota || null)
+    if (pergunta.nota?.pasta && KNOWLEDGE_CATEGORIES.some((c) => c.id === pergunta.nota.pasta)) setCategory(pergunta.nota.pasta)
+    setTimeout(() => campoRef.current?.focus(), 50)
+  }, [pergunta])
 
   useEffect(() => {
     conversationRef.current?.scrollTo({ top: conversationRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, loading, error])
 
+  // Cronômetro enquanto pensa (a IA local pode levar até 1 minuto)
   useEffect(() => {
-    if (!open) {
-      setLoading(false)
-      return undefined
-    }
+    if (!loading) return undefined
+    setSegundos(0)
+    const inicio = Date.now()
+    const t = setInterval(() => setSegundos(Math.round((Date.now() - inicio) / 1000)), 500)
+    return () => clearInterval(t)
+  }, [loading])
+
+  useEffect(() => {
+    if (open) return undefined
     return () => {
-      const hadPendingRequest = Boolean(requestRef.current)
       requestRef.current?.abort()
       requestRef.current = null
-      if (hadPendingRequest) {
-        setLoading(false)
-        setMessages(current => current[current.length - 1]?.role === 'user' ? current.slice(0, -1) : current)
-      }
     }
   }, [open])
 
-  async function sendMessage(event) {
-    event.preventDefault()
-    const message = draft.trim()
+  async function enviar(textoBruto) {
+    const message = (textoBruto ?? draft).trim()
     if (!message || loading || requestRef.current) return
-    const priorMessages = messages.filter(item => item.role === 'user' || item.role === 'assistant')
-    const previousSources = [...new Set(priorMessages
-      .filter(item => item.role === 'assistant')
-      .slice(-2)
-      .flatMap(item => item.sources?.map(source => source.path) || []))]
-      .slice(-4)
-    setMessages(current => [...current, { role: 'user', content: message }])
+    const priorMessages = messages.filter((item) => item.role === 'user' || item.role === 'assistant')
+    const previousSources = [...new Set(priorMessages.filter((item) => item.role === 'assistant').slice(-2)
+      .flatMap((item) => item.sources?.map((source) => source.path) || []))].concat(foco?.path ? [foco.path] : []).slice(-4)
+    setMessages((current) => [...current, { role: 'user', content: message }])
     setDraft('')
     setError('')
     setLoading(true)
     avisarRonin({ estado: 'pensando' })
     const controller = new AbortController()
     requestRef.current = controller
-    const timeout = setTimeout(() => controller.abort(new Error('timeout')), 80000)
+    const inicio = Date.now()
+    const timeout = setTimeout(() => controller.abort(new Error('timeout')), 90000)
     try {
       const response = await fetch('/api/seleblo/chat', {
         method: 'POST',
@@ -112,35 +107,37 @@ export default function RoninChat({ open, onClose }) {
           message,
           history: priorMessages.slice(-4),
           previousSources,
-          category: category || null,
-          useKnowledge,
+          category: category && category !== 'sem-cofre' ? category : null,
+          useKnowledge: category !== 'sem-cofre',
+          focusPath: foco?.path || null,
         }),
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Não foi possível obter uma resposta do RONIN.')
+      if (!response.ok) throw new Error(data.error || 'Não consegui uma resposta do RONIN.')
       if (requestRef.current !== controller) return
-      avisarRonin({ estado: 'respondeu', pastas: (data.sources || []).map(source => source.path) })
-      setMessages(current => [...current, {
+      avisarRonin({ estado: 'respondeu', pastas: (data.sources || []).map((source) => source.path) })
+      setStatus('ready')
+      setMessages((current) => [...current, {
         role: 'assistant',
         content: data.answer,
-        model: data.model,
         sources: data.sources || [],
-        timings: data.timings,
-        contextSufficient: data.contextSufficient,
         knowledgeUsed: data.knowledgeUsed,
-        reasoningEnabled: data.reasoningEnabled,
-        fallbackUsed: data.fallbackUsed,
+        contextSufficient: data.contextSufficient,
+        segundos: Math.round((Date.now() - inicio) / 1000),
       }])
     } catch (requestError) {
       if (requestRef.current !== controller) return
       avisarRonin({ estado: 'erro' })
-      if (controller.signal.aborted || requestError.name === 'AbortError' || requestError.name === 'TimeoutError') {
+      if (controller.signal.aborted) {
         setError(controller.signal.reason?.message === 'timeout'
-          ? 'A solicitação excedeu o limite de 80 segundos.'
-          : 'Solicitação cancelada.')
-      } else {
-        setError(requestError.message || 'Falha ao conversar com o RONIN local.')
-      }
+          ? 'O RONIN demorou mais de 90 segundos. Tente uma pergunta mais curta ou escolha uma pasta.'
+          : 'Pergunta cancelada.')
+      } else if (/ollama/i.test(requestError.message)) {
+        setStatus('offline')
+        setError('A IA local (Ollama) está desligada. Abra o app Ollama (ícone perto do relógio) e clique em "Tentar de novo".')
+      } else setError(requestError.message || 'Falha ao conversar com o RONIN.')
+      setMessages((current) => current[current.length - 1]?.role === 'user' ? current.slice(0, -1) : current)
+      setDraft(message)
     } finally {
       clearTimeout(timeout)
       if (requestRef.current === controller) {
@@ -150,121 +147,102 @@ export default function RoninChat({ open, onClose }) {
     }
   }
 
-  function cancelRequest() {
-    requestRef.current?.abort()
+  async function copiar(texto, i) {
+    try {
+      await navigator.clipboard.writeText(texto)
+      setCopiado(i)
+      setTimeout(() => setCopiado(null), 1500)
+    } catch { /* sem permissão de área de transferência */ }
   }
 
   if (!open) return null
-  const statusLabel = status === 'ready' ? `${model.toUpperCase()} · ${fallbackUsed ? 'FALLBACK LOCAL' : 'PRIORITÁRIO'}`
-    : status === 'checking' ? 'VERIFICANDO OLLAMA...'
-      : status === 'model-missing' ? 'MODELO LOCAL NÃO INSTALADO'
-        : 'OLLAMA INDISPONÍVEL'
-  const statusColor = status === 'ready' ? '#6CE6BB' : status === 'checking' ? '#91aac5' : '#ff9e9e'
+  const [rotulo, cor] = STATUS[loading ? 'thinking' : status] || STATUS.offline
 
-  return <aside aria-label="Chat com RONIN" style={panelStyle}>
-    <header style={{ padding: '15px 16px 12px', borderBottom: '1px solid rgba(120,185,224,.18)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-        <div>
-          <div style={{ font: `9px ${MONO}`, letterSpacing: '.13em', color: '#0DEEF3' }}>SELEBLO OS / AGENTE CONECTADO</div>
-          <h2 style={{ margin: '5px 0 3px', font: "700 19px 'Syne',sans-serif" }}>RONIN</h2>
-          <div style={{ font: `9px ${MONO}`, color: statusColor }}>● {statusLabel}{thinkingEnabled ? ' · RACIOCÍNIO ATIVO' : ''}</div>
+  return <aside className="so-painel" aria-label="Chat com o RONIN" style={{ top: 132, right: 16, bottom: 16, width: 'min(440px, calc(100vw - 32px))' }}>
+    <header className="so-topo">
+      <div>
+        <h2>🤖 RONIN</h2>
+        <div className="so-sub" style={{ marginTop: 4 }}>
+          <span className="so-status" style={{ '--cor': cor }}><i />{rotulo}</span>
+          <span style={{ marginLeft: 8 }}>IA local · lê o seu cofre</span>
         </div>
-        <button type="button" onClick={onClose} aria-label="Fechar chat" style={{ ...buttonStyle, padding: '5px 9px' }}>✕</button>
       </div>
-      <p style={{ fontSize: 11, lineHeight: 1.5, color: '#91aac5', margin: '10px 0 0' }}>
-        {fallbackUsed
-          ? 'Usando qwen2.5:3b local como fallback para priorizar respostas sem raciocínio prolongado.'
-          : thinkingEnabled
-          ? 'Ollama não permite desligar o raciocínio neste modelo; somente a resposta final é exibida.'
-          : 'IA via Ollama local · somente leitura · documentos consultados aparecem como fontes.'}
-      </p>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {messages.length > 0 && <button type="button" className="so-btn so-btn--icone" title="Nova conversa" aria-label="Nova conversa" onClick={() => { setMessages([]); setError('') }} disabled={loading}>⟲</button>}
+        <button type="button" className="so-btn so-btn--icone" onClick={onClose} title="Fechar" aria-label="Fechar o chat">✕</button>
+      </div>
     </header>
 
-    <div ref={conversationRef} aria-live="polite" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14 }}>
-      {!messages.length && !loading && <div style={{ padding: '24px 8px', color: '#91aac5', textAlign: 'center', fontSize: 12, lineHeight: 1.7 }}>
-        {status === 'ready'
-          ? 'Pergunte ao RONIN sobre o seu Segundo Cérebro ou faça uma pergunta geral.'
-          : 'O chat está disponível, mas a geração só funcionará quando o Ollama e o modelo local estiverem prontos.'}
+    <div ref={conversationRef} className="so-corpo" aria-live="polite">
+      {(status === 'offline' || status === 'model-missing') && !loading && <div className="so-aviso so-aviso--erro" style={{ marginBottom: 12 }}>
+        {status === 'offline'
+          ? 'A IA local (Ollama) não está respondendo. Abra o app Ollama e tente de novo.'
+          : 'O modelo de IA local não está instalado no Ollama.'}
+        <div style={{ marginTop: 8 }}><button type="button" className="so-btn" onClick={() => verificar()}>Tentar de novo</button></div>
       </div>}
-      {messages.map((item, index) => <article key={`${index}-${item.role}`} style={{
-        marginBottom: 12,
-        padding: 11,
-        borderRadius: 11,
-        background: item.role === 'user' ? 'rgba(13,238,243,.09)' : 'rgba(255,255,255,.045)',
-        border: `1px solid ${item.role === 'user' ? 'rgba(13,238,243,.2)' : 'rgba(255,255,255,.07)'}`,
-      }}>
-        <div style={{ font: `9px ${MONO}`, letterSpacing: '.08em', color: item.role === 'user' ? '#0DEEF3' : '#a59bff', marginBottom: 6 }}>
-          {item.role === 'user' ? 'VOCÊ' : `RONIN · ${item.model || 'QWEN3:4B'}`}
+
+      {!messages.length && !loading && <div className="so-vazio" style={{ paddingTop: 12 }}>
+        <span className="so-icone-grande">🤖</span>
+        Oi! Pergunte qualquer coisa sobre o que você guardou no cofre.
+        <div style={{ display: 'grid', gap: 8, marginTop: 16, textAlign: 'left' }}>
+          {SUGESTOES.map((s) => <button type="button" key={s} className="so-item" style={{ minHeight: 44 }} disabled={status !== 'ready'} onClick={() => enviar(s)}>
+            <span className="so-titulo" style={{ fontWeight: 700 }}>{s}</span><span className="so-seta">›</span>
+          </button>)}
         </div>
-        <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12, lineHeight: 1.65, color: '#e1edf6' }}>{item.content}</div>
-        {item.role === 'assistant' && item.timings && <div style={{ marginTop: 7, font: `9px ${MONO}`, color: '#91aac5' }}>
-          Busca {item.timings.retrievalMs} ms · modelo {item.timings.modelSelectionMs} ms · Ollama {item.timings.generationMs} ms · total {item.timings.totalMs} ms
-        </div>}
-        {item.role === 'assistant' && item.knowledgeUsed && !item.contextSufficient && <div style={{ marginTop: 8, color: '#ffd186', fontSize: 10 }}>
-          Não encontrei conteúdo suficiente no cofre para fundamentar esta resposta.
-        </div>}
-        {item.role === 'assistant' && item.reasoningEnabled && <div style={{ marginTop: 8, color: '#91aac5', fontSize: 10 }}>
-          O modelo exige raciocínio ativo; o traço interno não é exibido.
-        </div>}
-        {item.role === 'assistant' && item.fallbackUsed && <div style={{ marginTop: 8, color: '#91aac5', fontSize: 10 }}>
-          Resposta gerada pelo fallback local {item.model}.
-        </div>}
-        {item.role === 'assistant' && item.knowledgeUsed && item.sources?.length > 0 && <div style={{ marginTop: 11, paddingTop: 9, borderTop: '1px solid rgba(120,185,224,.16)' }}>
-          <div style={{ font: `9px ${MONO}`, color: '#0DEEF3', marginBottom: 6 }}>FONTES CONSULTADAS · {item.sources.length}</div>
-          {item.sources.map(source => <div key={source.path} style={{ marginTop: 7, fontSize: 10, color: '#a9bfd2' }}>
-            <div style={{ overflowWrap: 'anywhere', color: '#bdeff0' }}>{source.path}</div>
-            {source.excerpt && <div style={{ marginTop: 3, lineHeight: 1.5 }}>{source.excerpt}</div>}
-          </div>)}
-        </div>}
-        {item.role === 'assistant' && !item.knowledgeUsed && <div style={{ marginTop: 8, color: '#91aac5', fontSize: 10 }}>Resposta geral · cofre não consultado.</div>}
-      </article>)}
-      {loading && <div role="status" style={{ padding: 11, color: '#0DEEF3', font: `10px ${MONO}` }}>
-        RONIN está consultando o modelo local…
       </div>}
+
+      {messages.map((item, index) => item.role === 'user'
+        ? <div key={index} className="so-msg so-msg--voce">{item.content}</div>
+        : <div key={index} className="so-msg so-msg--ronin">
+          <Markdown texto={item.content} />
+          {item.knowledgeUsed && !item.contextSufficient && <div className="so-aviso so-aviso--atencao" style={{ marginTop: 8, fontSize: 12 }}>Não achei muito sobre isso no cofre — a resposta pode ser genérica.</div>}
+          {item.sources?.length > 0 && <div style={{ marginTop: 10 }}>
+            <div className="so-rotulo">Fontes no cofre</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {item.sources.map((source) => <button type="button" key={source.path} className="so-chip" title={source.excerpt || source.path} onClick={() => abrirNota(source.path)}>
+                📄 {nomeDaNota(source.path)}
+              </button>)}
+            </div>
+          </div>}
+          <div className="so-msg-meta">
+            <span>{item.knowledgeUsed ? `respondeu em ${item.segundos ?? '?'} s` : `resposta geral · ${item.segundos ?? '?'} s`}</span>
+            <button type="button" className="so-chip" onClick={() => copiar(item.content, index)}>{copiado === index ? '✓ copiado' : 'Copiar'}</button>
+          </div>
+        </div>)}
+
+      {loading && <div className="so-msg so-msg--ronin" role="status">
+        <span className="so-pensando" aria-hidden="true"><i /><i /><i /></span>
+        Pensando… <strong>{segundos}s</strong>
+        <div style={{ fontSize: 12, color: 'var(--tinta-3)', marginTop: 4 }}>A IA roda no seu PC: pode levar até 1 minuto.</div>
+        <button type="button" className="so-btn so-btn--leve" style={{ marginTop: 8 }} onClick={() => requestRef.current?.abort()}>Cancelar</button>
+      </div>}
+      {error && <div className="so-aviso so-aviso--erro" role="alert">{error}</div>}
     </div>
 
-    {error && <div role="alert" style={{ margin: '0 14px 8px', padding: 9, borderRadius: 8, color: '#ffb1b1', background: 'rgba(255,80,80,.1)', fontSize: 11, overflowWrap: 'anywhere' }}>{error}</div>}
-
-    <form onSubmit={sendMessage} style={{ padding: 13, borderTop: '1px solid rgba(120,185,224,.18)' }}>
-      <label style={{ display: 'block', font: `9px ${MONO}`, color: '#91aac5', marginBottom: 6 }}>
-        CONSULTAR
-        <select value={category} onChange={event => setCategory(event.target.value)} disabled={loading} style={{
-          display: 'block', width: '100%', marginTop: 5, padding: 8, borderRadius: 7,
-          color: '#ecf7ff', background: '#061a2d', border: '1px solid rgba(120,185,224,.2)',
-        }}>
-          <option value="">Todo o Segundo Cérebro</option>
-          {KNOWLEDGE_CATEGORIES.map(item => <option key={item.id} value={item.id}>{item.id}</option>)}
+    <form className="so-rodape" onSubmit={(event) => { event.preventDefault(); enviar() }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <label htmlFor="ronin-onde" style={{ fontSize: 12, fontWeight: 700, color: 'var(--tinta-2)', whiteSpace: 'nowrap' }}>Procurar em</label>
+        <select id="ronin-onde" className="so-campo" style={{ minHeight: 34, padding: '4px 8px', fontSize: 13 }} value={category} onChange={(event) => setCategory(event.target.value)} disabled={loading}>
+          <option value="">Todo o cofre</option>
+          {KNOWLEDGE_CATEGORIES.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+          <option value="sem-cofre">Não usar o cofre (conversa livre)</option>
         </select>
-      </label>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '8px 0', color: '#91aac5', fontSize: 10 }}>
-        <input type="checkbox" checked={useKnowledge} onChange={event => setUseKnowledge(event.target.checked)} disabled={loading}/>
-        Buscar fontes no Obsidian
-      </label>
-      <textarea
-        value={draft}
-        onChange={event => setDraft(event.target.value)}
-        onKeyDown={event => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault()
-            event.currentTarget.form.requestSubmit()
-          }
-        }}
-        maxLength={1800}
-        rows={3}
-        aria-label="Mensagem para RONIN"
-        placeholder="Escreva sua pergunta…"
-        disabled={loading}
-        style={{
-          width: '100%', resize: 'vertical', minHeight: 65, padding: 10,
-          borderRadius: 9, outline: 'none', color: '#ecf7ff', background: '#061a2d',
-          border: '1px solid rgba(120,185,224,.2)', font: '12px DM Sans,sans-serif',
-        }}
-      />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8 }}>
-        <span style={{ color: '#7296b5', font: `9px ${MONO}` }}>{draft.length}/1800 · Ollama local</span>
-        {loading
-          ? <button type="button" onClick={cancelRequest} style={buttonStyle}>CANCELAR</button>
-          : <button type="submit" disabled={!draft.trim()} style={{ ...buttonStyle, opacity: draft.trim() ? 1 : .45 }}>ENVIAR ↗</button>}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <textarea
+          ref={campoRef}
+          className="so-campo"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); enviar() } }}
+          maxLength={1800}
+          rows={2}
+          aria-label="Mensagem para o RONIN"
+          placeholder="Pergunte ao RONIN… (Enter envia)"
+          disabled={loading}
+          style={{ minHeight: 48 }}
+        />
+        <button type="submit" className="so-btn so-btn--principal" disabled={loading || !draft.trim()} aria-label="Enviar">Enviar</button>
       </div>
     </form>
   </aside>
