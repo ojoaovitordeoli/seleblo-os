@@ -16,7 +16,7 @@ export const KNOWLEDGE_DISTRICTS = [
   {
     x: -8, z: 1.5, title: 'ESTÚDIO CRIATIVO', color: '#79C7FF',
     categories: [
-      { id: '05 - Copies', label: 'COPIES', title: 'Copies', description: 'Biblioteca de textos e anúncios', symbol: '✎', color: '#FFD186' },
+      { id: '05 - Copies', label: 'COPYS', title: 'Copys', description: 'Biblioteca de textos e anúncios', symbol: '✎', color: '#FFD186' },
       { id: '06 - Roteiros', label: 'ROTEIROS', title: 'Roteiros', description: 'Roteiros de vídeos e atendimento', symbol: '▤', color: '#79C8FF' },
     ],
   },

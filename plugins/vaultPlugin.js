@@ -8,7 +8,7 @@ import { createFolderSyncService } from './folderSyncService.js'
 import { createRoninConversas } from './roninConversas.js'
 
 // Servidor local do Vite. Somente leitura. Nunca exponha o Vite na rede.
-const DEFAULT_VAULT = path.join(process.env.USERPROFILE || process.env.HOME || '', 'Downloads', '2', 'SEGUNDO SELEBLO')
+const DEFAULT_VAULT = path.join(process.env.USERPROFILE || process.env.HOME || '', 'Downloads', 'Projetos', '2', 'SEGUNDO SELEBLO')
 const VAULT = path.resolve(process.env.SELEBLO_VAULT || DEFAULT_VAULT)
 export const TAILSCALE_HOST = (process.env.SELEBLO_TAILSCALE_HOST || '').trim().toLowerCase()
 if (TAILSCALE_HOST && !/^(?:[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.)+ts\.net$/.test(TAILSCALE_HOST)) {
@@ -623,6 +623,7 @@ function registerVaultMiddleware(server) {
   } catch (error) {
     console.error('[seleblo-index] Serviço de indexação indisponível:', error)
   }
+  const areasVisitantes = new Map()
   const conversas = createRoninConversas({ knowledgeIndex, retrieveDocuments, readRequestBody, lerNota: path => searchableNoteText(readNoteContent({ path })) })
   server.middlewares.use('/api/seleblo', async (req, res) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -791,6 +792,17 @@ function registerVaultMiddleware(server) {
         if (!/^[\da-f-]{36}$/i.test(id)) return send(400, { error: 'Identificador de captura inválido.' })
         const status = captureService.status(id)
         return status ? send(200, status) : send(404, { error: 'Captura não encontrada.' })
+      }
+      const rotaVisitante = url.pathname.match(/^\/visitante\/([a-f0-9]{32})(\/conversas(?:\/[^/]*)?)$/)
+      if (rotaVisitante) {
+        let area = areasVisitantes.get(rotaVisitante[1])
+        if (!area) {
+          area = createRoninConversas({ knowledgeIndex, retrieveDocuments, readRequestBody, lerNota: () => '', visitante: rotaVisitante[1] })
+          areasVisitantes.set(rotaVisitante[1], area)
+        }
+        const interna = new URL(rotaVisitante[2] + url.search, 'http://localhost')
+        if (!await area.atender(req, res, interna, send)) send(404, { error: 'Rota não encontrada' })
+        return
       }
       if (conversas && await conversas.atender(req, res, url, send)) return
       if (url.pathname === '/chat') {

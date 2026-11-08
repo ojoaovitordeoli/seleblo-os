@@ -10,9 +10,6 @@ import { promisify } from 'node:util'
 // Conversas do RONIN: histórico salvo, resposta em tempo real, memória, anexos e busca na web.
 // Tudo fica neste PC (fora do repositório) e o único modelo usado é o Ollama local.
 const DADOS = path.join(process.env.LOCALAPPDATA || os.homedir(), 'SELEBLO-OS', 'ronin')
-const PASTA_CONVERSAS = path.join(DADOS, 'conversas')
-const PASTA_ANEXOS = path.join(DADOS, 'anexos')
-const ARQUIVO_MEMORIAS = path.join(DADOS, 'memorias.json')
 const MARKITDOWN = path.join(os.homedir(), '.local', 'share', 'markitdown-venv', 'Scripts', 'markitdown.exe')
 
 const OLLAMA_URL = 'http://127.0.0.1:11434'
@@ -35,6 +32,9 @@ const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 const MODELO_OPENAI = process.env.RONIN_OPENAI_MODELO || 'gpt-5-mini'
 const ARQUIVO_CHAVE = path.join(DADOS, 'openai.json')
 const TAMANHO_TRECHO = 1200
+const MAX_TEXTO_VISITANTE = 1000
+const MAX_CONVERSAS_VISITANTE = 10
+const MAX_MENSAGENS_VISITANTE = 40
 const ESPERA_MAXIMA_MS = 5 * 60 * 1000
 const MAX_MEMORIAS_NO_PROMPT = 500
 const RESUMIR_ACIMA_DE = 8
@@ -51,8 +51,6 @@ function gravarJson(arquivo, dado) {
   fs.writeFileSync(temporario, JSON.stringify(dado), 'utf8')
   fs.renameSync(temporario, arquivo)
 }
-const arquivoConversa = id => path.join(PASTA_CONVERSAS, `${id}.json`)
-const arquivoAnexo = id => path.join(PASTA_ANEXOS, `${id}.json`)
 const normalizar = t => String(t).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
 const termos = t => [...new Set(normalizar(t).match(/[a-z0-9]{4,}/g) || [])]
 
@@ -157,7 +155,14 @@ async function buscarNaWeb(pergunta, signal) {
   return { resultados, pagina }
 }
 
-export function createRoninConversas({ knowledgeIndex, retrieveDocuments, readRequestBody, lerNota }) {
+export function createRoninConversas({ knowledgeIndex, retrieveDocuments, readRequestBody, lerNota, visitante = null }) {
+  // O visitante da demonstração tem uma área própria e nenhum caminho para os dados do dono.
+  const raiz = visitante ? path.join(DADOS, 'visitantes', visitante) : DADOS
+  const PASTA_CONVERSAS = path.join(raiz, 'conversas')
+  const PASTA_ANEXOS = path.join(raiz, 'anexos')
+  const ARQUIVO_MEMORIAS = path.join(raiz, 'memorias.json')
+  const arquivoConversa = id => path.join(PASTA_CONVERSAS, `${id}.json`)
+  const arquivoAnexo = id => path.join(PASTA_ANEXOS, `${id}.json`)
   fs.mkdirSync(PASTA_CONVERSAS, { recursive: true })
   fs.mkdirSync(PASTA_ANEXOS, { recursive: true })
   const emAndamento = new Set()
@@ -167,7 +172,7 @@ export function createRoninConversas({ knowledgeIndex, retrieveDocuments, readRe
     conversa.atualizada = agora()
     gravarJson(arquivoConversa(conversa.id), conversa)
   }
-  const memorias = () => lerJson(ARQUIVO_MEMORIAS, [])
+  const memorias = () => (visitante ? [] : lerJson(ARQUIVO_MEMORIAS, []))
 
   function listar(busca) {
     const procurado = normalizar(busca || '').trim()
@@ -215,6 +220,13 @@ export function createRoninConversas({ knowledgeIndex, retrieveDocuments, readRe
   }
 
   function promptSistema(conversa) {
+    if (visitante) {
+      return [
+        'Você é o RONIN, um assistente de IA em uma demonstração. Responda em português do Brasil, de forma útil e direta, sobre qualquer assunto. Use Markdown quando ajudar.',
+        'Nesta demonstração você não tem acesso a cofre, notas, arquivos, projetos, clientes ou dados de ninguém. Se perguntarem sobre isso, diga que na versão completa essas informações ficam disponíveis para o dono. Nunca invente esse conteúdo.',
+        conversa.resumo ? `Resumo do começo desta conversa:\n${conversa.resumo}` : '',
+      ].filter(Boolean).join('\n')
+    }
     const lembrar = memorias().map(m => `- ${m.texto}`).join('\n').slice(-MAX_MEMORIAS_NO_PROMPT)
     const hoje = new Date().toLocaleDateString('pt-BR', { dateStyle: 'full' })
     return [
@@ -243,6 +255,7 @@ export function createRoninConversas({ knowledgeIndex, retrieveDocuments, readRe
 
   /** Reúne cofre, anexos e web dentro da cota. Devolve o bloco de contexto, as fontes e os avisos. */
   async function montarContexto(conversa, pergunta, usarWeb, forcarCofre, perfil, emitir, signal) {
+    if (visitante) return { contexto: '', fontes: [], avisos: [] }
     const blocos = []
     const fontes = []
     const avisos = []
@@ -403,7 +416,10 @@ export function createRoninConversas({ knowledgeIndex, retrieveDocuments, readRe
     let conversa = corpo?.conversa ? carregar(String(corpo.conversa)) : null
     if (corpo?.conversa && !conversa) return send(404, { error: 'Conversa não encontrada.' })
     if (conversa && emAndamento.has(conversa.id)) return send(409, { error: 'O RONIN ainda está respondendo nesta conversa.' })
-    const motor = corpo?.motor === 'openai' ? 'openai' : 'local'
+    const motor = !visitante && corpo?.motor === 'openai' ? 'openai' : 'local'
+    if (visitante && (String(corpo?.texto || '').length > MAX_TEXTO_VISITANTE || listar('').length > MAX_CONVERSAS_VISITANTE || (conversa?.mensagens.length || 0) > MAX_MENSAGENS_VISITANTE)) {
+      return send(429, { error: 'Esta demonstração tem um limite de uso. Obrigado por testar.' })
+    }
     if (motor === 'openai' && !chaveOpenAI()) return send(400, { error: 'A chave da OpenAI ainda não foi salva neste PC.' })
     const perfil = PERFIS[motor]
     const modeloUsado = motor === 'openai' ? MODELO_OPENAI : MODELO
@@ -423,13 +439,13 @@ export function createRoninConversas({ knowledgeIndex, retrieveDocuments, readRe
         if ((conversa.resumoAte || 0) > indice) { conversa.resumoAte = 0; conversa.resumo = '' }
       }
       if (!conversa) conversa = { id: novoId(), titulo: criarTitulo(texto), criada: agora(), atualizada: agora(), resumo: '', resumoAte: 0, anexos: [], mensagens: [] }
-      const anexos = (Array.isArray(corpo.anexos) ? corpo.anexos : []).filter(id => ID.test(id))
+      const anexos = (!visitante && Array.isArray(corpo.anexos) ? corpo.anexos : []).filter(id => ID.test(id))
         .map(id => lerJson(arquivoAnexo(id), null)).filter(Boolean).map(a => ({ id: a.id, nome: a.nome }))
       conversa.anexos = [...(conversa.anexos || []), ...anexos]
-      if (typeof corpo.foco === 'string' && corpo.foco) conversa.foco = corpo.foco
+      if (!visitante && typeof corpo.foco === 'string' && corpo.foco) conversa.foco = corpo.foco
       conversa.mensagens.push({ id: novoId(), papel: 'usuario', texto, anexos, quando: agora() })
       const lembrete = texto.match(/^(?:ronin[,:]?\s+)?(?:lembr[ae]|guard[ae]|anot[ae]|memoriz[ae])(?:-se)?(?:\s+(?:que|isso|disso|de que))?[:,]?\s+(.{5,300})$/is)
-      if (lembrete) {
+      if (lembrete && !visitante) {
         const lista = memorias()
         lista.push({ id: novoId(), texto: lembrete[1].trim(), quando: agora() })
         gravarJson(ARQUIVO_MEMORIAS, lista)
@@ -501,6 +517,10 @@ export function createRoninConversas({ knowledgeIndex, retrieveDocuments, readRe
   /** Atende as rotas de conversa. Devolve false se a rota não for daqui. */
   async function atender(req, res, url, send) {
     const caminho = url.pathname
+    if (visitante && !/^\/conversas(\/|$)/.test(caminho)) {
+      send(403, { error: 'Não disponível na demonstração.' })
+      return true
+    }
     if (!/^\/(conversas|anexos|memorias|motores)(\/|$)/.test(caminho)) return false
     if (req.method !== 'GET' && req.method !== 'DELETE' && !/^application\/json(;|$)/i.test(req.headers['content-type'] || '')) {
       send(415, { error: 'Envie em JSON.' })

@@ -114,6 +114,7 @@ export default function RoninTela() {
   const [motor, setMotor] = useState('local')
   const [foco, setFoco] = useState(null)
   const [temOpenai, setTemOpenai] = useState(false)
+  const [demo, setDemo] = useState(false)
   const [gerando, setGerando] = useState(false)
   const [status, setStatus] = useState('')
   const [segundos, setSegundos] = useState(0)
@@ -171,7 +172,7 @@ export default function RoninTela() {
       } catch { /* segue sem a pergunta pronta */ }
     }, 0)
     api('/status').then(d => setModeloOk(Boolean(d.available))).catch(() => setModeloOk(false))
-    api('/motores').then(d => setTemOpenai(d.openai)).catch(() => setTemOpenai(false))
+    api('/motores').then(d => { setTemOpenai(d.openai); setDemo(Boolean(d.demo)) }).catch(() => setTemOpenai(false))
     return () => clearTimeout(inicio)
   }, [abrir, recarregarLista])
 
@@ -332,7 +333,7 @@ export default function RoninTela() {
           ))}
         </nav>
         <div className="ch-rodape-lateral">
-          <button type="button" onClick={() => setVerMemorias(true)}>O que o RONIN lembra</button>
+          {!demo && <button type="button" onClick={() => setVerMemorias(true)}>O que o RONIN lembra</button>}
           <a href={window.location.pathname}>Voltar para a ilha</a>
         </div>
       </aside>
@@ -341,7 +342,7 @@ export default function RoninTela() {
         className={`ch-principal${arrastando ? ' ch-principal--arrastando' : ''}`}
         onDragOver={e => { e.preventDefault(); setArrastando(true) }}
         onDragLeave={e => { if (e.currentTarget === e.target) setArrastando(false) }}
-        onDrop={e => { e.preventDefault(); setArrastando(false); void anexar([...e.dataTransfer.files]) }}
+        onDrop={e => { e.preventDefault(); setArrastando(false); if (!demo) void anexar([...e.dataTransfer.files]) }}
       >
         <header className="ch-topo">
           <button type="button" className="ch-icone ch-menu" aria-label="Abrir lista de conversas" onClick={() => setGaveta(true)}>☰</button>
@@ -452,18 +453,23 @@ export default function RoninTela() {
             />
             <div className="ch-ferramentas">
               <input ref={seletor} type="file" hidden multiple accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv" onChange={e => { void anexar([...e.target.files]); e.target.value = '' }} />
+              {!demo && (
+                <>
               <button type="button" className="ch-ferramenta" onClick={() => seletor.current?.click()}>Anexar</button>
               <button type="button" className={`ch-ferramenta${web ? ' ch-ferramenta--ativa' : ''}`} aria-pressed={web} onClick={() => setWeb(v => !v)}>Buscar na web</button>
               <button type="button" className={`ch-ferramenta${cofre ? ' ch-ferramenta--ativa' : ''}`} aria-pressed={cofre} title="O RONIN já consulta o cofre quando você fala dele. Ligue para obrigar." onClick={() => setCofre(v => !v)}>Usar o cofre</button>
+                </>
+              )}
               <span className="ch-espaco" />
               {gerando
                 ? <button type="button" className="ch-enviar ch-enviar--parar" onClick={parar}>Parar</button>
                 : <button type="button" className="ch-enviar" disabled={!rascunho.trim() || anexos.some(a => a.enviando)} onClick={submeter}>Enviar</button>}
             </div>
           </div>
-          {motor === 'openai'
+          {demo && <p className="ch-nota ch-nota--nuvem">Demonstração: aqui o RONIN só conversa e não acessa dados de ninguém.</p>}
+          {!demo && motor === 'openai'
             ? <p className="ch-nota ch-nota--nuvem">Modo OpenAI: o que for usado nesta resposta sai do seu PC e tem custo. Evite dados de clientes.</p>
-            : <p className="ch-nota">O RONIN roda no seu PC e pode errar. Confira o que for importante.</p>}
+            : !demo && <p className="ch-nota">O RONIN roda no seu PC e pode errar. Confira o que for importante.</p>}
         </footer>
       </main>
       {verMemorias && <Memorias aoFechar={() => setVerMemorias(false)} />}
