@@ -264,21 +264,19 @@ export default function MundoVoxel({ onAbrirPasta }) {
     }
     cena.add(nuvens)
 
-    // contagem de notas
-    fetch('/api/seleblo/library', { cache: 'no-store' })
+    // contagem de notas nas placas — atualiza sozinha (o cofre muda com a sincronização e as capturas)
+    const atualizarContagem = () => fetch('/api/seleblo/library', { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => {
         const conta = (n) => (n.type === 'note' ? 1 : (n.children || []).reduce((a, c) => a + conta(c), 0))
-        for (const n of d.nodes || []) {
-          const el = placas[n.name]
-          if (el && n.type === 'folder') el.querySelector('.n').textContent = ` · ${conta(n)}`
-        }
-        for (const el of Object.values(placas)) {
-          const n = el.querySelector('.n')
-          if (n.textContent.includes('…')) n.textContent = ' · 0'
-        }
+        const totais = {}
+        for (const n of d.nodes || []) if (n.type === 'folder') totais[n.name] = conta(n)
+        for (const [id, el] of Object.entries(placas)) el.querySelector('.n').textContent = ` · ${totais[id] ?? 0}`
       })
       .catch(() => {})
+    atualizarContagem()
+    const timerContagem = setInterval(atualizarContagem, 20000)
+    window.addEventListener('focus', atualizarContagem)
 
     // ---------------------------------------------------------------- RONIN (robô)
     const ronin = {
@@ -458,6 +456,8 @@ export default function MundoVoxel({ onAbrirPasta }) {
 
     return () => {
       vivo = false
+      clearInterval(timerContagem)
+      window.removeEventListener('focus', atualizarContagem)
       cancelAnimationFrame(raf)
       desliga()
       window.removeEventListener('resize', ajustar)
