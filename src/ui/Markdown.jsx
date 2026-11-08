@@ -76,7 +76,8 @@ export default function Markdown({ texto = '' }) {
         i++
       }
       const Tag = ordenada ? 'ol' : 'ul'
-      blocos.push(<Tag key={k++}>{itens.map((t, j) => <li key={j}>{inline(t, `l${k}-${j}`)}</li>)}</Tag>)
+      // Item separado por linha em branco vira outra lista: o número inicial mantém a contagem certa.
+      blocos.push(<Tag key={k++} start={ordenada ? parseInt(l, 10) : undefined}>{itens.map((t, j) => <li key={j}>{inline(t, `l${k}-${j}`)}</li>)}</Tag>)
       continue
     }
     if (l.startsWith('>')) {

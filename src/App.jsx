@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import KnowledgePanel from './components/KnowledgePanel'
-import RoninChat from './components/RoninChat'
 import Header from './components/Header'
 import EscritorioPixel from './pixel/EscritorioPixel'
 import MundoVoxel from './mundo/MundoVoxel'
@@ -12,17 +11,19 @@ import './ui/tema.css'
 // Visual antigo em pixel-art: http://127.0.0.1:4173/?visual=pixel
 const VISUAL = new URLSearchParams(window.location.search).get('visual') === 'pixel' ? 'pixel' : 'mundo'
 
+const abrirChat = () => { window.location.href = `${window.location.pathname}?chat` }
+
 export default function App() {
-  const [showRoninChat, setShowRoninChat] = useState(false)
   const [zoneCommand, setZoneCommand] = useState(null)
-  const [pergunta, setPergunta] = useState(null)
   const abrirPasta = useCallback((folder) => setZoneCommand({ folder, seq: Date.now() }), [])
 
-  // "Perguntar ao RONIN" a partir de uma nota do Cofre
+  // "Perguntar ao RONIN" a partir de uma nota do Cofre: a pergunta segue para a tela de conversa.
   useEffect(() => {
     const ouvir = (event) => {
-      setPergunta({ texto: event.detail?.texto || '', nota: event.detail?.nota || null, seq: Date.now() })
-      setShowRoninChat(true)
+      try {
+        sessionStorage.setItem('ronin:pergunta', JSON.stringify({ texto: event.detail?.texto || '', nota: event.detail?.nota || null }))
+      } catch { /* sem armazenamento, a tela abre sem a pergunta pronta */ }
+      abrirChat()
     }
     window.addEventListener('seleblo:perguntar', ouvir)
     return () => window.removeEventListener('seleblo:perguntar', ouvir)
@@ -40,14 +41,7 @@ export default function App() {
         onFocusFolder={(pasta) => avisarRonin({ estado: 'ir', pasta })}
         onResetView={() => avisarRonin({ estado: 'casa' })}
       />
-      <button
-        type="button"
-        className="so-placa"
-        style={{ right: 16 }}
-        aria-pressed={showRoninChat}
-        onClick={() => setShowRoninChat((v) => !v)}
-      >🤖 Falar com o RONIN</button>
-      <RoninChat open={showRoninChat} onClose={() => setShowRoninChat(false)} pergunta={pergunta} />
+      <button type="button" className="so-placa" style={{ right: 16 }} onClick={abrirChat}>🤖 Falar com o RONIN</button>
 
       <div style={{
         position: 'fixed', bottom: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 20,

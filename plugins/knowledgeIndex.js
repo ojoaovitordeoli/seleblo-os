@@ -6,14 +6,26 @@ const MAX_NOTE_BYTES = 1024 * 1024
 const MAX_INDEXED_NOTES = 2500
 const MAX_SCAN_BYTES = 128 * 1024 * 1024
 const MAX_TERMS_PER_NOTE = 1800
-const MAX_PROMPT_CHARS = 6000
+const MAX_PROMPT_CHARS = 4500
 const MAX_ANALYSIS_CHARS = 1800
 const MAX_ANALYSIS_KEYWORDS = 16
 const MAX_ANALYSIS_RELATIONS = 6
 const SCAN_INTERVAL_MS = 15000
 const ANALYSIS_INTERVAL_MS = 8000
 const ANALYSIS_RETRY_MS = 60000
-const ANALYSIS_TIMEOUT_MS = 90000
+const ANALYSIS_TIMEOUT_MS = 240000
+const ANALYSIS_YIELD_MS = 60000
+const JARVIS_ACTIVE_WINDOW_MS = 300000
+const JARVIS_SIGNAL = path.join(process.env.LOCALAPPDATA || '', 'JARVIS', 'ollama-em-uso.txt')
+
+// O PC só roda um modelo por vez: enquanto o JARVIS conversa, o indexador espera.
+function jarvisUsando() {
+  try {
+    return Date.now() - fs.statSync(JARVIS_SIGNAL).mtimeMs < JARVIS_ACTIVE_WINDOW_MS
+  } catch {
+    return false
+  }
+}
 const MODEL = 'qwen2.5:3b'
 const TYPES = new Set(['roteiro', 'copy', 'vídeo', 'inspiração', 'projeto', 'skill', 'cliente', 'ideia', 'outro'])
 const STOP_WORDS = new Set('a ao aos aquela aquelas aquele aqueles aquilo as ate com como da das de dela delas dele deles depois do dos e ela elas ele eles em entre era essa essas esse esses esta estas este estes eu foi foram ha isso isto ja la lhe lhes mais mas me mesmo meu meus minha minhas muita muitas muito muitos na nas nem no nos nossa nossas nosso nossos o os ou para pela pelas pelo pelos por qual quando que quem se sem seu seus sua suas tambem tem tenho ter teu teus toda todas todo todos tua tuas um uma umas uns voce voces'.split(' '))
@@ -385,6 +397,10 @@ export function createKnowledgeIndex({
 
   async function analyzeNext() {
     if (analysisRunning || analysisPauseCount > 0 || stopped) return
+    if (jarvisUsando()) {
+      scheduleAnalysis(ANALYSIS_YIELD_MS)
+      return
+    }
     const allDocuments = Object.values(state.documents)
     const document = allDocuments
       .filter(item => (item.analysisState === 'pending' || item.analysisState === 'error') && (item.retryAt || 0) <= Date.now())
@@ -395,6 +411,11 @@ export function createKnowledgeIndex({
     analysisRunning = true
     const controller = new AbortController()
     analysisAbortController = controller
+    let cedeu = false
+    const vigia = setInterval(() => {
+      if (jarvisUsando()) { cedeu = true; controller.abort() }
+    }, 1500)
+    vigia.unref?.()
     document.analysisState = 'analyzing'
     document.analysisError = null
     save()
@@ -434,7 +455,8 @@ export function createKnowledgeIndex({
           model,
           stream: false,
           think: false,
-          options: { temperature: 0.1, num_predict: 500 },
+          format: 'json',
+          options: { temperature: 0.1, num_ctx: 4096, num_predict: 500 },
           messages: [
             {
               role: 'system',
@@ -466,17 +488,18 @@ export function createKnowledgeIndex({
       if (current?.hash === document.hash) {
         for (const duplicate of Object.values(state.documents).filter(item => item.hash === document.hash)) {
           duplicate.analysisState = 'pending'
-          duplicate.analysisError = analysisPauseCount > 0 ? null : error.message
-          duplicate.retryAt = analysisPauseCount > 0 ? 0 : Date.now() + ANALYSIS_RETRY_MS
+          duplicate.analysisError = analysisPauseCount > 0 || cedeu ? null : error.message
+          duplicate.retryAt = analysisPauseCount > 0 || cedeu ? 0 : Date.now() + ANALYSIS_RETRY_MS
         }
       }
-      if (analysisPauseCount === 0) {
+      if (analysisPauseCount === 0 && !cedeu) {
         state.error = `Análise Ollama pendente: ${error.message}`
         console.warn('[seleblo-index] Análise local pendente; será tentada novamente:', error.message)
       }
       save()
-      if (analysisPauseCount === 0) scheduleAnalysis(ANALYSIS_RETRY_MS)
+      if (analysisPauseCount === 0 && !cedeu) scheduleAnalysis(ANALYSIS_RETRY_MS)
     } finally {
+      clearInterval(vigia)
       if (analysisAbortController === controller) analysisAbortController = null
       analysisRunning = false
       if (!stopped && analysisPauseCount === 0 && !analysisTimer) scheduleAnalysis(ANALYSIS_INTERVAL_MS)

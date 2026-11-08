@@ -5,6 +5,7 @@ import { KNOWLEDGE_CATEGORIES } from '../src/knowledgeCategories.js'
 import { createKnowledgeIndex } from './knowledgeIndex.js'
 import { createCaptureService } from './captureService.js'
 import { createFolderSyncService } from './folderSyncService.js'
+import { createRoninConversas } from './roninConversas.js'
 
 // Servidor local do Vite. Somente leitura. Nunca exponha o Vite na rede.
 const DEFAULT_VAULT = path.join(process.env.USERPROFILE || process.env.HOME || '', 'Downloads', '2', 'SEGUNDO SELEBLO')
@@ -165,9 +166,10 @@ function relevantExcerpt(content, terms) {
   return excerpt.length > 230 ? `${excerpt.slice(0, 227)}...` : excerpt
 }
 
-export function retrieveDocuments(question, category, previousSources, knowledgeIndex) {
+export function retrieveDocuments(question, category, previousSources, knowledgeIndex, excluir = null) {
   const terms = queryTerms(question)
   let ranked = knowledgeIndex?.search(question, category, previousSources) || []
+  if (excluir) ranked = ranked.filter(item => !excluir.test(item.path || ""))
   if (!ranked.length) {
     const status = knowledgeIndex?.status()
     return { documents: [], sufficient: false, reason: status?.status === 'initializing' ? 'index_initializing' : 'no_matching_documents' }
@@ -621,6 +623,7 @@ function registerVaultMiddleware(server) {
   } catch (error) {
     console.error('[seleblo-index] Serviço de indexação indisponível:', error)
   }
+  const conversas = createRoninConversas({ knowledgeIndex, retrieveDocuments, readRequestBody, lerNota: path => searchableNoteText(readNoteContent({ path })) })
   server.middlewares.use('/api/seleblo', async (req, res) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.setHeader('Cache-Control', 'no-store')
@@ -789,6 +792,7 @@ function registerVaultMiddleware(server) {
         const status = captureService.status(id)
         return status ? send(200, status) : send(404, { error: 'Captura não encontrada.' })
       }
+      if (conversas && await conversas.atender(req, res, url, send)) return
       if (url.pathname === '/chat') {
         if (req.method !== 'POST') {
           res.setHeader('Allow', 'POST')
